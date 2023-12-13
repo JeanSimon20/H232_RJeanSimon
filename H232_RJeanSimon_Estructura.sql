@@ -14,7 +14,7 @@ CREATE TABLE AREA (
 -- Validacion para ingresar solo numeros en los nombres de las areas a registrar.
 ALTER TABLE area
 ADD CONSTRAINT CHK_Nombre_Valido_Area CHECK (
-    name NOT LIKE '%[^a-zA-Z Ò—·ÈÌÛ˙¡…Õ”⁄¸‹]%'
+    name NOT LIKE '%[^a-zA-Z √±√ë√°√©√≠√≥√∫√Å√â√ç√ì√ö√º√ú]%'
 );
 
 -- Validacion para que el estado ingrese por defecto con Activo, se crea el campo status.
@@ -39,7 +39,7 @@ CREATE TABLE PERSON (
 -- Validacion para agregar solo letras al nombre de la persona
 ALTER TABLE PERSON
 ADD CONSTRAINT CHK_Nombre_Valido_Person CHECK (
-    name NOT LIKE '%[^a-zA-Z Ò—·ÈÌÛ˙¡…Õ”⁄¸‹]%'
+    name NOT LIKE '%[^a-zA-Z √±√ë√°√©√≠√≥√∫√Å√â√ç√ì√ö√º√ú]%'
 );
 
 -- Validacion para que el estado ingrese por defecto con Activo, se crea el campo status.
@@ -80,20 +80,19 @@ ADD CONSTRAINT UC_Celular UNIQUE (celular);
 ALTER TABLE PERSON
 ADD CONSTRAINT CHK_Celular CHECK (LEN(celular) = 9 AND dni NOT LIKE '%[^0-9]%');
 
--- Tabla Maestra BIENES
 CREATE TABLE BIENES (
-    bienesid int  IDENTITY(1,1),
-	cantidad int NOT NULL,
-    code char(10)  NOT NULL,
-    detalle varchar(255)  NOT NULL,
-    valorlibro varchar(25)  NOT NULL,
-    fecha_ingreso date  NOT NULL,
-    fecha_depreciacion date  NOT NULL,
-    depreciacion_anual varchar(255)  NOT NULL,
-    depreciacion_mensual varchar(255)  NOT NULL,
-    depreciacion_acumulada varchar(255)  NOT NULL,
-	status char(10) not null,
-    CONSTRAINT BIENES_pk PRIMARY KEY  (bienesid)
+    bienesid int IDENTITY(1,1),
+    cantidad int NOT NULL,
+    code varchar(255),
+    detalle varchar(255) NOT NULL,
+    valorlibro varchar(255) NOT NULL,
+    fecha_ingreso varchar(255) NOT NULL,
+    fecha_depreciacion varchar(255) NOT NULL,
+    depreciacion_anual DECIMAL(10, 2),
+    depreciacion_mensual DECIMAL(10, 2),
+    depreciacion_acumulada AS (depreciacion_anual),
+    status char(10) not null,
+    CONSTRAINT BIENES_pk PRIMARY KEY (bienesid)
 );
 
 -- Validacion para que el codigo del bienes sea unico
@@ -156,7 +155,7 @@ AND name LIKE '%J%';
 
 --Uso de IN y LIKE
 --IN (1, 2, 3, 4, 5) selecciona usuarios con UsuarioID de 1, 2, 3, 4 o 5.
---LIKE '%@dominio.com' selecciona usuarios cuyos correos electrÛnicos terminen en "@dominio.com".
+--LIKE '%@dominio.com' selecciona usuarios cuyos correos electr√≥nicos terminen en "@dominio.com".
 SELECT * FROM PERSON
 WHERE personid IN (1, 2, 3, 4, 5)
 AND Email LIKE '%@email.com';
@@ -164,7 +163,7 @@ AND Email LIKE '%@email.com';
 --Uso de BETWEEN, LIKE, y IN juntos
 --BETWEEN 5 AND 15 selecciona usuarios con UsuarioID entre 1 y 5.
 --LIKE 'J%' selecciona usuarios cuyos nombres comiencen con la letra 'J'.
---LIKE '%@gmail.com' OR Email LIKE '%@yahoo.com' selecciona usuarios cuyos correos electrÛnicos terminen en "@email.com" o "@hotmail.com".
+--LIKE '%@gmail.com' OR Email LIKE '%@yahoo.com' selecciona usuarios cuyos correos electr√≥nicos terminen en "@email.com" o "@hotmail.com".
 SELECT * FROM PERSON
 WHERE personid BETWEEN 5 AND 5
 AND name LIKE 'J%'
@@ -172,7 +171,7 @@ AND Email LIKE '%@email.com' OR Email LIKE '%@hotmail.com';
 
 
 --Procedimiento Almacenado con IF y CASE
---Este procedimiento verifica si un usuario est· activo (Estado = 'A') y, dependiendo de su estado, realiza una actualizaciÛn en el campo Email
+--Este procedimiento verifica si un usuario est√° activo (Estado = 'A') y, dependiendo de su estado, realiza una actualizaci√≥n en el campo Email
 CREATE PROCEDURE ActualizarEmailUsuario
     @personid int,
     @NuevoEmail varchar(255)
@@ -190,7 +189,7 @@ BEGIN
     END
     ELSE
     BEGIN
-        PRINT 'El usuario no est· activo y no se puede actualizar el email.';
+        PRINT 'El usuario no est√° activo y no se puede actualizar el email.';
     END
 END;
 
@@ -228,7 +227,7 @@ END;
 -- Ejecutar AsignarEmailPorDefecto
 EXEC AsignarEmailPorDefecto;
 
---3. Procedimiento Almacenado con CombinaciÛn de IF, CASE, y WHILE
+--3. Procedimiento Almacenado con Combinaci√≥n de IF, CASE, y WHILE
 --Este procedimiento actualiza el estado de un usuario y, dependiendo del nuevo estado, realiza acciones adicionales.
 CREATE PROCEDURE ActualizarEstadoUsuario
     @personid int,
@@ -261,3 +260,45 @@ DECLARE person_cursor CURSOR
     FOR SELECT * FROM PERSON 
 OPEN person_cursor  
 FETCH NEXT FROM person_cursor;
+
+-- Calcular Depreciacion Anual, mensual y acumulado
+CREATE TRIGGER CalcularDepreciacion
+ON BIENES
+AFTER INSERT
+AS
+BEGIN
+    DECLARE @factorDepreciacion DECIMAL(18, 15) = 0.001; -- Factor de depreciaci√≥n para calcular la depreciaci√≥n anual.
+
+    UPDATE BIENES
+    SET depreciacion_anual = CAST(ROUND(CAST(i.valorlibro AS DECIMAL(10, 2)) * @factorDepreciacion, 2) AS DECIMAL(10, 2)),
+        depreciacion_mensual = CAST(ROUND((CAST(i.valorlibro AS DECIMAL(10, 2)) * @factorDepreciacion) / 12, 2) AS DECIMAL(10, 2))
+    FROM inserted i
+    WHERE BIENES.bienesid = i.bienesid;
+END;
+
+--- Crear Codigo de manera secuencial
+CREATE TRIGGER AsignarCodigoSecuencial
+ON BIENES
+AFTER INSERT
+AS
+BEGIN
+    DECLARE @maxNumber int
+    DECLARE @newCode varchar(255)
+
+    -- Encuentra el m√°ximo n√∫mero actual despu√©s del prefijo 'EQ-'
+    SELECT @maxNumber = ISNULL(MAX(CAST(SUBSTRING(code, 4, LEN(code) - 3) AS int)), 0)
+    FROM BIENES
+    WHERE code LIKE 'EQ-%'
+
+    -- Incrementa el n√∫mero para el nuevo c√≥digo
+    SET @maxNumber = @maxNumber + 1
+
+    -- Crea el nuevo c√≥digo con el formato 'EQ-xxx'
+    SET @newCode = 'EQ-' + RIGHT('000' + CAST(@maxNumber AS varchar), 3)
+
+    -- Actualiza el √∫ltimo registro insertado con el nuevo c√≥digo
+    UPDATE BIENES
+    SET code = @newCode
+    WHERE bienesid = (SELECT MAX(bienesid) FROM BIENES)
+END
+
