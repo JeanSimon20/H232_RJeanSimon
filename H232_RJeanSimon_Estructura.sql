@@ -1,10 +1,6 @@
--- Crear la base de datos
 create database H232_RJeanSimon;
-
---Poner en uso la base de datos
 use H232_RJeanSimon;
 
--- Tabla Maestra Area
 CREATE TABLE AREA (
     areaid int IDENTITY(1,1),
     name varchar(255)  NOT NULL,
@@ -86,8 +82,8 @@ CREATE TABLE BIENES (
     code varchar(255),
     detalle varchar(255) NOT NULL,
     valorlibro varchar(255) NOT NULL,
-    fecha_ingreso varchar(255) NOT NULL,
-    fecha_depreciacion varchar(255) NOT NULL,
+    fecha_ingreso date NOT NULL,
+    fecha_depreciacion date NOT NULL,
     depreciacion_anual DECIMAL(10, 2),
     depreciacion_mensual DECIMAL(10, 2),
     depreciacion_acumulada AS (depreciacion_anual),
@@ -95,9 +91,48 @@ CREATE TABLE BIENES (
     CONSTRAINT BIENES_pk PRIMARY KEY (bienesid)
 );
 
--- Validacion para que el codigo del bienes sea unico
-ALTER TABLE BIENES
-ADD CONSTRAINT UC_Bienes UNIQUE (code);
+-- Calcular Depreciacion Anual, mensual y acumulado
+CREATE TRIGGER CalcularDepreciacion
+ON BIENES
+AFTER INSERT
+AS
+BEGIN
+    DECLARE @factorDepreciacion DECIMAL(18, 15) = 0.001; -- Factor de depreciación para calcular la depreciación anual.
+
+    UPDATE BIENES
+    SET depreciacion_anual = CAST(ROUND(CAST(i.valorlibro AS DECIMAL(10, 2)) * @factorDepreciacion, 2) AS DECIMAL(10, 2)),
+        depreciacion_mensual = CAST(ROUND((CAST(i.valorlibro AS DECIMAL(10, 2)) * @factorDepreciacion) / 12, 2) AS DECIMAL(10, 2))
+    FROM inserted i
+    WHERE BIENES.bienesid = i.bienesid;
+END;
+
+--- Crear Codigo de manera secuencial
+CREATE TRIGGER AsignarCodigoSecuencial
+ON BIENES
+AFTER INSERT
+AS
+BEGIN
+    DECLARE @maxNumber int
+    DECLARE @newCode varchar(255)
+
+    -- Encuentra el máximo número actual después del prefijo 'EQ-'
+    SELECT @maxNumber = ISNULL(MAX(CAST(SUBSTRING(code, 4, LEN(code) - 3) AS int)), 0)
+    FROM BIENES
+    WHERE code LIKE 'EQ-%'
+
+    -- Incrementa el número para el nuevo código
+    SET @maxNumber = @maxNumber + 1
+
+    -- Crea el nuevo código con el formato 'EQ-xxx'
+    SET @newCode = 'EQ-' + RIGHT('000' + CAST(@maxNumber AS varchar), 3)
+
+    -- Actualiza el último registro insertado con el nuevo código
+    UPDATE BIENES
+    SET code = @newCode
+    WHERE bienesid = (SELECT MAX(bienesid) FROM BIENES)
+END
+
+
 
 -- Table: ASIGNACION_AREA
 CREATE TABLE ASIGNACION_AREA (
@@ -197,7 +232,6 @@ END;
 EXEC ActualizarEmailUsuario @personid = 4, @NuevoEmail = 'nuevoemail5@email.com';
 
 
-
 -- Procedimiento Almacenado con WHILE
 --Este procedimiento asigna un valor por defecto a las personas que no tienen un email registrado, utilizando un bucle WHILE.
 CREATE PROCEDURE AsignarEmailPorDefecto
@@ -256,49 +290,104 @@ END;
 EXEC ActualizarEstadoUsuario @personid = 2, @NuevoEstado = 'A';
 
 -- Cursor: 
-DECLARE person_cursor CURSOR  
-    FOR SELECT * FROM PERSON 
-OPEN person_cursor  
-FETCH NEXT FROM person_cursor;
+DECLARE @bienesid int, @cantidad int, @code varchar(255), @detalle varchar(255), @valorlibro varchar(255), @fecha_ingreso varchar(255), @fecha_depreciacion varchar(255), @depreciacion_anual DECIMAL(10, 2), @depreciacion_mensual DECIMAL(10, 2), @depreciacion_acumulada DECIMAL(10, 2), @status char(10);
 
--- Calcular Depreciacion Anual, mensual y acumulado
-CREATE TRIGGER CalcularDepreciacion
-ON BIENES
-AFTER INSERT
-AS
+-- Declarar el cursor
+DECLARE bienes_cursor CURSOR FOR 
+SELECT bienesid, cantidad, code, detalle, valorlibro, fecha_ingreso, fecha_depreciacion, depreciacion_anual, depreciacion_mensual, depreciacion_acumulada, status 
+FROM BIENES;
+
+-- Abrir el cursor
+OPEN bienes_cursor;
+
+-- Recuperar la primera fila del cursor
+FETCH NEXT FROM bienes_cursor 
+INTO @bienesid, @cantidad, @code, @detalle, @valorlibro, @fecha_ingreso, @fecha_depreciacion, @depreciacion_anual, @depreciacion_mensual, @depreciacion_acumulada, @status;
+
+-- Loop para recorrer todas las filas
+WHILE @@FETCH_STATUS = 0
 BEGIN
-    DECLARE @factorDepreciacion DECIMAL(18, 15) = 0.001; -- Factor de depreciación para calcular la depreciación anual.
+    -- Aquí puedes realizar operaciones con los datos de cada fila
+    -- Por ejemplo, imprimirlos
+    PRINT 'ID: ' + CAST(@bienesid AS varchar) + ', Cantidad: ' + CAST(@cantidad AS varchar) + ', Detalle: ' + @detalle + ', valorlibro: ' + CAST(@valorlibro AS varchar);
 
-    UPDATE BIENES
-    SET depreciacion_anual = CAST(ROUND(CAST(i.valorlibro AS DECIMAL(10, 2)) * @factorDepreciacion, 2) AS DECIMAL(10, 2)),
-        depreciacion_mensual = CAST(ROUND((CAST(i.valorlibro AS DECIMAL(10, 2)) * @factorDepreciacion) / 12, 2) AS DECIMAL(10, 2))
-    FROM inserted i
-    WHERE BIENES.bienesid = i.bienesid;
-END;
-
---- Crear Codigo de manera secuencial
-CREATE TRIGGER AsignarCodigoSecuencial
-ON BIENES
-AFTER INSERT
-AS
-BEGIN
-    DECLARE @maxNumber int
-    DECLARE @newCode varchar(255)
-
-    -- Encuentra el máximo número actual después del prefijo 'EQ-'
-    SELECT @maxNumber = ISNULL(MAX(CAST(SUBSTRING(code, 4, LEN(code) - 3) AS int)), 0)
-    FROM BIENES
-    WHERE code LIKE 'EQ-%'
-
-    -- Incrementa el número para el nuevo código
-    SET @maxNumber = @maxNumber + 1
-
-    -- Crea el nuevo código con el formato 'EQ-xxx'
-    SET @newCode = 'EQ-' + RIGHT('000' + CAST(@maxNumber AS varchar), 3)
-
-    -- Actualiza el último registro insertado con el nuevo código
-    UPDATE BIENES
-    SET code = @newCode
-    WHERE bienesid = (SELECT MAX(bienesid) FROM BIENES)
+    -- Pasar a la siguiente fila
+    FETCH NEXT FROM bienes_cursor 
+    INTO @bienesid, @cantidad, @code, @detalle, @valorlibro, @fecha_ingreso, @fecha_depreciacion, @depreciacion_anual, @depreciacion_mensual, @depreciacion_acumulada, @status;
 END
+
+-- Cerrar el cursor
+CLOSE bienes_cursor;
+
+-- Liberar los recursos del cursor
+DEALLOCATE bienes_cursor;
+
+
+-- Creacion de Clustered y Non-Clustered
+-- Tabla Person:
+--DROP INDEX PERSON_pk ON PERSON;
+--CREATE CLUSTERED INDEX IX_PERSON_EMAIL ON PERSON (email);
+-- -- CREATE CLUSTERED INDEX IX_PERSON_ID ON PERSON (personid);
+-- Crear un índice no-clustered en dni
+CREATE NONCLUSTERED INDEX IX_PERSON_DNI ON PERSON (dni);
+
+-- Crear un índice no-clustered en name de Area
+create NONCLUSTERED index IX_AREA_NAME on AREA (name);
+
+-- Crear un índice no-clustered en detalle de Bienes
+create NONCLUSTERED index IX_BIENES_DETALLE on BIENES (detalle);
+
+SELECT 
+    AA.asigareid,
+    AA.personid,
+    P.name AS person_name,
+    AA.areaid,
+    A.name AS area_name,
+    AA.status
+FROM 
+    ASIGNACION_AREA AA
+INNER JOIN 
+    PERSON P ON AA.personid = P.personid
+INNER JOIN 
+    AREA A ON AA.areaid = A.areaid;
+
+SELECT 
+    AB.asigbieid,
+    AB.bienesid,
+    B.detalle AS bien_detalle,
+    B.valorlibro,
+    B.status AS bien_status,
+    AB.areaid,
+    A.name AS area_name,
+    AB.status AS asignacion_status
+FROM 
+    ASIGNACION_BIENES AB
+INNER JOIN 
+    BIENES B ON AB.bienesid = B.bienesid
+INNER JOIN 
+    AREA A ON AB.areaid = A.areaid;
+
+SELECT 
+    AA.asigareid,
+    AA.personid,
+    P.name AS person_name,
+    AA.areaid AS areaid_asignacion_area,
+    AA.status AS status_asignacion_area,
+    AB.asigbieid,
+    AB.bienesid,
+    B.detalle AS bien_detalle,
+	b.valorlibro as Valor,
+    AB.areaid AS areaid_asignacion_bienes,
+    AB.status AS status_asignacion_bienes,
+    A.name AS area_name
+FROM 
+    ASIGNACION_AREA AA
+INNER JOIN 
+    PERSON P ON AA.personid = P.personid
+INNER JOIN 
+    AREA A ON AA.areaid = A.areaid
+INNER JOIN 
+    ASIGNACION_BIENES AB ON A.areaid = AB.areaid
+INNER JOIN 
+    BIENES B ON AB.bienesid = B.bienesid;
 
